@@ -9,8 +9,8 @@ class UciConfig
 
   # @param [Array] raw_lines
   def initialize(raw_lines)
-    @conf  = {}
-    @lines = raw_lines
+    @conf       = {}
+    @lines      = raw_lines
     @conf_block = nil
   end
 
@@ -61,11 +61,27 @@ class UciConfig
 
   def _dump_opts!(conf_buf, sub_sect)
     sub_sect.each do |opt_key, opt_vals|
-      opt_vals.each do |opt, opt_arg|
-        conf_buf.write("\t#{opt_key} #{opt} '#{opt_arg}'\n")
+      if opt_key == :option
+        _dump_opts_kv!(conf_buf, opt_vals)
+      elsif opt_key == :list
+        _dump_opts_lst!(conf_buf, opt_vals)
       end
     end
     conf_buf.write("\n")
+  end
+
+  def _dump_opts_kv!(conf_buf, opt_vals)
+    opt_vals.sort.each do |opt, opt_arg|
+      conf_buf.write("\toption #{opt} '#{opt_arg}'\n")
+    end
+  end
+
+  def _dump_opts_lst!(conf_buf, opt_vals)
+    opt_vals.sort.each do |opt, opt_list|
+      opt_list.each do |list_item|
+        conf_buf.write("\tlist #{opt} '#{list_item}'\n")
+      end
+    end
   end
 
   def _commit_block!
@@ -80,7 +96,7 @@ class UciConfig
   end
 
   def _commit_dict!
-    @conf[@conf_block.sect] ||= {}
+    @conf[@conf_block.sect]                         ||= {}
     @conf[@conf_block.sect][@conf_block.block_name] = @conf_block.config
     nil
   end
@@ -93,24 +109,34 @@ class UciConfig
 
   def _parse_line!(line)
     config_line = line.scan(CONFIG_REGEX).flatten.compact
-    type = BLOCK_TYPES[config_line.length]
+    type        = BLOCK_TYPES[config_line.length]
     if @conf_block.nil? && type != :option
       @conf_block = UciConfigBlock.new(type, config_line)
     elsif @conf_block
-      _parse_option_line line
+      _parse_options(line)
     else
       warn "Something strange on line: #{line}"
     end
   end
 
-  def _parse_option_line(line)
+  def _parse_options(line)
     opts = line.scan(OPTION_REGEX).flatten
-    conf = {
-      opts.first => {
-        opts[1] => opts[2]
-      }
-    }
-    @conf_block.config.merge!(conf) { |_key, old_val, new_val| old_val.merge(new_val) }
+    case opts.first
+    when 'option'
+      _parse_options_kv(opts)
+    when 'list'
+      _parse_options_lst(opts)
+    else
+      raise('invalid line?')
+    end
+  end
+
+  def _parse_options_kv(opts)
+    @conf_block.config[:option][opts[1]] = opts[2]
+  end
+
+  def _parse_options_lst(opts)
+    @conf_block.config[:list][opts[1]].append(opts[2])
   end
 end
 
@@ -120,8 +146,11 @@ class UciConfigBlock
 
   def initialize(block_type, data)
     @block_type = block_type
-    @sect = data.first
+    @sect       = data.first
     @block_name = data.last if data.length == 2
-    @config = {}
+    @config     = {
+      option: Hash.new { |h, k| h[k] = {} },
+      list:   Hash.new { |h, k| h[k] = [] }
+    }
   end
 end

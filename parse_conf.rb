@@ -13,8 +13,8 @@ end
 
 def sort_uci_host_by_ip(uci)
   uci.conf['host'].sort! do |a, b|
-    a_ip = a['option']['ip'].split('.').last.to_i
-    b_ip = b['option']['ip'].split('.').last.to_i
+    a_ip = a[:option]['ip'].split('.').last.to_i
+    b_ip = b[:option]['ip'].split('.').last.to_i
     a_ip <=> b_ip
   end
 end
